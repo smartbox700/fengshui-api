@@ -2,8 +2,8 @@ name: Keep Render Awake
 
 on:
   schedule:
-    - cron: "*/12 * * * *"   # 12분마다 주기적으로 실행 (UTC 기준)
-  workflow_dispatch:         # 필요할 때 수동 실행도 가능
+    - cron: '*/12 * * * *'   # 12분마다 (UTC)
+  workflow_dispatch:
 
 jobs:
   ping:
@@ -21,10 +21,11 @@ jobs:
           done
           exit 1
 
-      - name: Optional: sanity POST to /evaluate (non-blocking)
-        continue-on-error: true
+      # 비차단 검사: 실패해도 워크플로우는 계속 통과
+      - name: Optional sanity POST to /evaluate (non-blocking)
+        if: always()
         run: |
           curl -s -X POST "https://fengshui-api.onrender.com/evaluate" \
             -H "Content-Type: application/json" \
             -d '{"lat":37.56,"lon":126.97,"features":{"aspect_deg":180,"road":{"distance_m":50,"angle_diff_to_aspect":10}}}' \
-            -o /dev/null -w "POST /evaluate => HTTP %{http_code}\n"
+            -o /dev/null -w "POST /evaluate => HTTP %{http_code}\n" || true
