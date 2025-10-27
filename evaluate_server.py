@@ -3,7 +3,14 @@ from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)
+@app.get("/")
+def root():
+    return {"ok": True, "service": "fengshui-api"}, 200
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}, 200
+    
 def calc_fengshui_score(payload: dict) -> dict:
     lat = float(payload.get("lat", 0))
     lon = float(payload.get("lon", 0))
@@ -47,4 +54,5 @@ def health():
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5000, debug=True)
+
 
