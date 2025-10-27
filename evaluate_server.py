@@ -55,9 +55,6 @@ def health():
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5000, debug=True)
 
-# 헬스 체크용 라우트
-@app.route("/health")
-def health():
-    return jsonify({"status": "ok"}), 200
+
 
 
