@@ -48,12 +48,9 @@ def evaluate():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
-@app.route("/", methods=["GET"])
-def health():
-    return jsonify({"status": "ok", "message": "evaluate server running"}), 200
-
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5000, debug=True)
+
 
 
 
