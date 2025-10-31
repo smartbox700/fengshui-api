@@ -1,4 +1,26 @@
 from flask import Flask, request, jsonify
+import os
+from supabase import create_client, Client
+
+# Supabase 초기화
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+
+def log_request(ip, endpoint, payload, response, status_code):
+    """API 요청/응답을 Supabase logs 테이블에 기록"""
+    try:
+        data = {
+            "ip": ip,
+            "endpoint": endpoint,
+            "payload": payload,
+            "response": response,
+            "status_code": status_code
+        }
+        supabase.table("logs").insert(data).execute()
+    except Exception as e:
+        print("❌ Supabase 로그 저장 실패:", e)
+
 from flask_cors import CORS
 # --- NEW: Pydantic schema (입/출력 계약) ---
 from pydantic import BaseModel, Field, ValidationError, conlist, confloat
@@ -77,10 +99,17 @@ def evaluate():
             "features": req.features.model_dump()
         }
 
-        # 실제 점수 계산 (기존 함수 그대로 사용)
-        result = calc_fengshui_score(data)
+         # 최종 점수 계산 (기존 코드)
+    result = calc_fengshui_score(data)
 
-        # 안전 가드 + 표준 응답 스키마
+    # ✅ Supabase 로그 기록 추가
+    log_request(
+        ip=request.remote_addr,
+        endpoint="/evaluate",
+        payload=payload,
+        response=result,
+        status_code=200
+    )
         total = clamp_score(float(result.get("total", 0)))
         grade = result.get("grade", "N/A")
         remedies = result.get("remedies", [])
@@ -96,6 +125,7 @@ def evaluate():
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5000, debug=True)
+
 
 
 
