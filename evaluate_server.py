@@ -88,43 +88,50 @@ def calc_fengshui_score(payload: dict) -> dict:
 def evaluate():
     try:
         payload = request.get_json(silent=True) or {}
-
-        # ✅ Pydantic으로 입력 검증
         req = EvaluateRequest.model_validate(payload)
 
-        # 계산을 위한 데이터 정리
         data = {
             "lat": req.lat,
             "lon": req.lon,
             "features": req.features.model_dump()
         }
 
-         # 최종 점수 계산 (기존 코드)
-    result = calc_fengshui_score(data)
-
-    # ✅ Supabase 로그 기록 추가
-    log_request(
-        ip=request.remote_addr,
-        endpoint="/evaluate",
-        payload=payload,
-        response=result,
-        status_code=200
-    )
+        result = calc_fengshui_score(data)
         total = clamp_score(float(result.get("total", 0)))
         grade = result.get("grade", "N/A")
         remedies = result.get("remedies", [])
 
         resp = EvaluateResponse(total=total, grade=grade, remedies=remedies)
+
+        # --- Supabase 로그 기록 추가 ---
+        from supabase import create_client, Client
+        import os, json, datetime
+
+        url = os.environ.get("SUPABASE_URL")
+        key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        supabase: Client = create_client(url, key)
+
+        supabase.table("logs").insert({
+            "endpoint": "/evaluate",
+            "timestamp": datetime.datetime.utcnow().isoformat(),
+            "payload": payload,
+            "response": resp.model_dump(),
+            "status_code": 200
+        }).execute()
+        # --- 로그 기록 끝 ---
+
         return jsonify(resp.model_dump()), 200
 
     except ValidationError as ve:
         return jsonify({"error": "invalid_request", "detail": ve.errors()}), 400
+
     except Exception as e:
         return jsonify({"error": "internal_error", "message": str(e)}), 500
 
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5000, debug=True)
+
 
 
 
