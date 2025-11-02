@@ -1,136 +1,27 @@
-from flask import Flask, request, jsonify
-import os
-from supabase import create_client, Client
+from fastapi import FastAPI
 
-# Supabase 초기화
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+app = FastAPI()
 
-def log_request(ip, endpoint, payload, response, status_code):
-    """API 요청/응답을 Supabase logs 테이블에 기록"""
-    try:
-        data = {
-            "ip": ip,
-            "endpoint": endpoint,
-            "payload": payload,
-            "response": response,
-            "status_code": status_code
-        }
-        supabase.table("logs").insert(data).execute()
-    except Exception as e:
-        print("❌ Supabase 로그 저장 실패:", e)
 
-from flask_cors import CORS
-# --- NEW: Pydantic schema (입/출력 계약) ---
-from pydantic import BaseModel, Field, ValidationError, conlist, confloat
-from typing import Optional, Dict, Any
-class Features(BaseModel):
-    # 사용 중인 특징만 먼저 선언 (필요하면 추가 확장)
-    direction_south: Optional[confloat(ge=0, le=1)] = 0
-    river_distance: Optional[confloat(ge=0)] = None
-    road_distance: Optional[confloat(ge=0)] = None
-    angle_diff_to_aspect: Optional[confloat(ge=0, le=180)] = None
-
-class EvaluateRequest(BaseModel):
-    lat: confloat(ge=-90, le=90)
-    lon: confloat(ge=-180, le=180)
-    features: Features = Field(default_factory=Features)
-    rules_version: Optional[str] = "v1"   # 추후 Supabase 룰 버전 스위치용
-
-class EvaluateResponse(BaseModel):
-    total: confloat(ge=0, le=100)
-    grade: str
-    remedies: conlist(str, min_length=0)
-
-def clamp_score(x: float) -> float:
-    return max(0.0, min(100.0, x))
-
-app = Flask(__name__)
-CORS(app)
 @app.get("/")
-def root():
-    return {"ok": True, "service": "fengshui-api"}, 200
+async def root():
+    return {"ok": True, "service": "fengshui-api"}
+
 
 @app.get("/health")
-def health():
-    return {"status": "ok"}, 200
-    
-def calc_fengshui_score(payload: dict) -> dict:
-    lat = float(payload.get("lat", 0))
-    lon = float(payload.get("lon", 0))
-    f   = payload.get("features", {}) or {}
+async def health():
+    return {"ok": True}
 
-    aspect = float(f.get("aspect_deg", 0))
-    road   = f.get("road", {}) or {}
-    road_dist = float(road.get("distance_m", 0))
-    road_angle_diff = float(road.get("angle_diff_to_aspect", 0))
 
-    aspect_score = max(0, 100 - min(abs(aspect - 180), 180))
-    road_penalty = max(0, 50 - road_dist * 0.5) + max(0, 30 - (30 - min(road_angle_diff, 30)))
-    total = aspect_score - road_penalty
-    total = max(0, min(100, total))
-
+@app.post("/evaluate")
+async def evaluate(data: dict):
     return {
-        "subscores": {
-            "aspect_score": round(aspect_score, 1),
-            "road_penalty": round(road_penalty, 1),
-        },
-        "total": round(total, 1),
-        "grade": "A" if total >= 85 else "B" if total >= 70 else "C" if total >= 55 else "D",
-        "remedies": [
-            "도로와의 완충녹지 또는 담장 고려",
-            "현관/창 배치로 도로 시선 최소화"
-        ],
+        "ok": True,
+        "score": 80,
+        "element": "wood",
+        "message": "FastAPI 서버가 정상적으로 동작 중입니다."
     }
 
-@app.route("/evaluate", methods=["POST"])
-def evaluate():
-    try:
-        payload = request.get_json(silent=True) or {}
-        req = EvaluateRequest.model_validate(payload)
-
-        data = {
-            "lat": req.lat,
-            "lon": req.lon,
-            "features": req.features.model_dump()
-        }
-
-        result = calc_fengshui_score(data)
-        total = clamp_score(float(result.get("total", 0)))
-        grade = result.get("grade", "N/A")
-        remedies = result.get("remedies", [])
-
-        resp = EvaluateResponse(total=total, grade=grade, remedies=remedies)
-
-        # --- Supabase 로그 기록 추가 ---
-        from supabase import create_client, Client
-        import os, json, datetime
-
-        url = os.environ.get("SUPABASE_URL")
-        key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-        supabase: Client = create_client(url, key)
-
-        supabase.table("logs").insert({
-            "endpoint": "/evaluate",
-            "timestamp": datetime.datetime.utcnow().isoformat(),
-            "payload": payload,
-            "response": resp.model_dump(),
-            "status_code": 200
-        }).execute()
-        # --- 로그 기록 끝 ---
-
-        return jsonify(resp.model_dump()), 200
-
-    except ValidationError as ve:
-        return jsonify({"error": "invalid_request", "detail": ve.errors()}), 400
-
-    except Exception as e:
-        return jsonify({"error": "internal_error", "message": str(e)}), 500
-
-
-if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000, debug=True)
 
 
 
