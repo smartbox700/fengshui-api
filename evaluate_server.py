@@ -1,6 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, ValidationError
 from typing import Literal, Dict
+from typing import List, Optional
+
 
 app = FastAPI(
     title="fengshui-api",
@@ -156,6 +158,89 @@ def evaluate(payload: EvaluateInput):
         )
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=e.errors())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ---------- Color Suggestion (Five Elements) ----------
+
+class ColorSuggestInput(BaseModel):
+    element: Literal["water", "wood", "fire", "earth", "metal"]
+    style: Optional[Literal["modern", "minimal", "vintage", "lux"]] = "modern"
+
+class ColorSuggestOutput(BaseModel):
+    ok: Literal[True]
+    element: Literal["water", "wood", "fire", "earth", "metal"]
+    style: Literal["modern", "minimal", "vintage", "lux"]
+    palette: List[str]                 # HEX 리스트 (밝은톤 → 진한톤)
+    suggestions: Dict[str, str]        # 용도별 추천 HEX
+    message: str
+
+BASE_PALETTES: Dict[str, List[str]] = {
+    "water": ["#0EA5E9", "#38BDF8", "#93C5FD", "#111827"],
+    "wood":  ["#16A34A", "#86EFAC", "#A3E635", "#374151"],
+    "fire":  ["#EF4444", "#F97316", "#FCA5A5", "#1F2937"],
+    "earth": ["#A16207", "#D6A354", "#F5E6CC", "#4B5563"],
+    "metal": ["#94A3B8", "#CBD5E1", "#E5E7EB", "#0F172A"],
+}
+
+def clamp(v: int) -> int:
+    return max(0, min(255, v))
+
+def adjust_hex(hex_color: str, factor: float) -> str:
+    """HEX 색상을 밝게(>1.0) 또는 어둡게(<1.0) 조정."""
+    hex_color = hex_color.lstrip("#")
+    r = clamp(int(int(hex_color[0:2], 16) * factor))
+    g = clamp(int(int(hex_color[2:4], 16) * factor))
+    b = clamp(int(int(hex_color[4:6], 16) * factor))
+    return "#{:02X}{:02X}{:02X}".format(r, g, b)
+
+def build_palette(element: str, style: str) -> List[str]:
+    base = BASE_PALETTES[element]
+    if style == "minimal":
+        factors = [1.25, 1.05, 0.9, 0.7, 0.5, 0.35, 0.2]
+    elif style == "vintage":
+        factors = [0.9, 0.8, 0.7, 1.0, 1.1, 0.6, 0.45]
+    elif style == "lux":
+        factors = [0.85, 0.7, 0.55, 1.0, 1.15, 0.4, 0.25]
+    else:  # modern
+        factors = [1.15, 1.0, 0.85, 0.7, 0.55, 0.4, 0.25]
+
+    c0, c1, c2, cN = base[0], base[1], base[2], base[3]
+    seeds = [c0, c1, c2, cN, c0, c1, cN]
+    return [adjust_hex(seeds[i], factors[i]) for i in range(7)]
+
+def usage_suggestions(palette: List[str], element: str) -> Dict[str, str]:
+    return {
+        "walls": palette[1],
+        "floor": palette[3],
+        "accent": palette[0],
+        "furniture": palette[4],
+        "lighting": palette[2],
+    }
+
+def element_hint(element: str) -> str:
+    return {
+        "water": "흐름·차분·지성의 기운을 살리는 청록·네이비 계열",
+        "wood":  "성장·생기·확장의 기운을 살리는 그린·라임 계열",
+        "fire":  "열정·활력·표현의 기운을 살리는 레드·오렌지 계열",
+        "earth": "안정·균형·신뢰의 기운을 살리는 샌드·오커 계열",
+        "metal": "정제·집중·정확의 기운을 살리는 실버·블루그레이 계열",
+    }[element]
+
+@app.post("/color-suggestion", response_model=ColorSuggestOutput)
+def color_suggestion(payload: ColorSuggestInput):
+    try:
+        pal = build_palette(payload.element, payload.style)
+        sug = usage_suggestions(pal, payload.element)
+        msg = f"{payload.element} 요소에 맞춘 팔레트입니다. {element_hint(payload.element)} · 스타일: {payload.style}."
+        return ColorSuggestOutput(
+            ok=True,
+            element=payload.element,
+            style=payload.style or "modern",
+            palette=pal,
+            suggestions=sug,
+            message=msg
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
