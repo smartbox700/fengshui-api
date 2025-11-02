@@ -1,5 +1,7 @@
-Flask==3.1.2
-Flask-Cors==4.0.1
-gunicorn==21.2.0
-pydantic>=2.7
+fastapi==0.115.*
+uvicorn[standard]==0.30.*
+pydantic>=2,<3
+typing-extensions>=4.8
 supabase>=2.7
+
+
