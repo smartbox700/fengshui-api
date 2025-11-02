@@ -423,6 +423,32 @@ def report(payload: ReportInput):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# ---------- Lightweight Fengshui Score ----------
+class ScoreOutput(BaseModel):
+    ok: Literal[True]
+    score: int
+    element: Literal["water", "wood", "fire", "earth", "metal"]
+
+@app.post("/fengshui-score", response_model=ScoreOutput)
+def fengshui_score(payload: EvaluateInput):
+    """
+    경량 점수 API: 점수와 오행만 반환 (리스트/미리보기 용)
+    """
+    try:
+        f = payload.features
+        s_dir = score_direction_south(f.direction_south)
+        s_riv = score_river_distance(f.river_distance)
+        s_road = score_road_distance(f.road_distance)
+        s_ang = score_angle_diff(f.angle_diff_to_aspect)
+        raw = s_dir + s_riv + s_road + s_ang
+        total = max(0, min(100, round(raw)))
+        element = element_from_score(total)
+        return ScoreOutput(ok=True, score=total, element=element)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 
 
