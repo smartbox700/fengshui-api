@@ -338,6 +338,91 @@ def report(payload: ReportInput):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# ---------- Report (Evaluate + Color Suggestion) ----------
+from typing import List, Optional  # 없으면 유지/추가
+
+class ReportInput(EvaluateInput):
+    style: Optional[Literal["modern", "minimal", "vintage", "lux"]] = "modern"
+
+class ReportOutput(BaseModel):
+    ok: Literal[True]
+    score: int
+    element: Literal["water", "wood", "fire", "earth", "metal"]
+    summary: str
+    recommendations: List[str]
+    palette: List[str]
+    suggestions: Dict[str, str]
+    details: Dict[str, float]
+
+def recommendations_from_inputs(f: FeatureData) -> List[str]:
+    tips: List[str] = []
+    # 방위
+    if f.direction_south <= 0.3:
+        tips.append("북향 성향이 강하므로 따뜻한 조명과 밝은 벽면 색으로 채광을 보완하세요.")
+    elif f.direction_south < 0.7:
+        tips.append("남동·남서 방향 가구 배치로 채광과 통풍을 확보하세요.")
+    else:
+        tips.append("남향 장점을 살려 거실·작업공간을 창 쪽으로 배치하세요.")
+    # 하천
+    if f.river_distance < 0.1:
+        tips.append("하천과 매우 가까우면 제습/방수에 주의하고 창틀 결로 점검을 권장합니다.")
+    elif not (0.3 <= f.river_distance <= 0.8):
+        tips.append("하천과의 거리가 멀면 수기 보완을 위해 청록·네이비 소품을 포인트로 사용하세요.")
+    # 도로
+    if f.road_distance < 0.05:
+        tips.append("주요 도로 인접 시 방음커튼·러그로 소음·진동을 줄이세요.")
+    elif f.road_distance > 1.2:
+        tips.append("도로와 거리가 멀면 접근성이 떨어질 수 있으니 동선 계획을 최적화하세요.")
+    # 각도
+    if f.angle_diff_to_aspect >= 45:
+        tips.append("방위 편차가 커서 책상·침대 방향을 남·동남으로 재배치하세요.")
+    elif f.angle_diff_to_aspect > 15:
+        tips.append("포인트 벽면을 남향 기준으로 잡아 방위를 보정하세요.")
+    if not tips:
+        tips.append("현재 입지는 균형이 좋아 기본 동선만 정리해도 충분합니다.")
+    return tips
+
+@app.post("/report", response_model=ReportOutput)
+def report(payload: ReportInput):
+    try:
+        f = payload.features
+        # 1) 점수 계산
+        s_dir = score_direction_south(f.direction_south)
+        s_riv = score_river_distance(f.river_distance)
+        s_road = score_road_distance(f.road_distance)
+        s_ang = score_angle_diff(f.angle_diff_to_aspect)
+        raw = s_dir + s_riv + s_road + s_ang
+        total = max(0, min(100, round(raw)))
+        element = element_from_score(total)
+
+        # 2) 요약/추천
+        summary = message_from_inputs(total, f)
+        tips = recommendations_from_inputs(f)
+
+        # 3) 팔레트/용도
+        pal = build_palette(element, payload.style or "modern")
+        sug = usage_suggestions(pal, element)
+
+        return ReportOutput(
+            ok=True,
+            score=total,
+            element=element,
+            summary=summary,
+            recommendations=tips,
+            palette=pal,
+            suggestions=sug,
+            details={
+                "direction": round(s_dir, 2),
+                "river": round(s_riv, 2),
+                "road": round(s_road, 2),
+                "angle": round(s_ang, 2),
+            },
+        )
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 
 
