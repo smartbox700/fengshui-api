@@ -2,9 +2,47 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, ValidationError
 from typing import Literal, Dict
 from typing import List, Optional
-from supabase import create_client, Client
-import os
+from fastapi import Request, BackgroundTasks
+from supabase import create_client, Client  # 이미 있으면 중복 X
+import os                                  # 이미 있으면 중복 X
 
+# --- Supabase client (환경변수 필요: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) ---
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+supabase: Client | None = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
+
+async def _insert_log(record: dict):
+    """비동기 백그라운드에서 Supabase에 로그 적재 (실패해도 API 응답에는 영향 X)"""
+    try:
+        if not supabase:
+            return
+        supabase.table("api_logs").insert(record).execute()
+    except Exception:
+        # 로깅 실패는 조용히 무시
+        pass
+
+def _build_log_record(
+    path: str,
+    request: Request,
+    payload: dict | None,
+    lat: float | None = None,
+    lon: float | None = None,
+    score: int | None = None,
+    element: str | None = None,
+    details: dict | None = None,
+) -> dict:
+    return {
+        "path": path,
+        "ip": (request.client.host if request and request.client else None),
+        "user_agent": (request.headers.get("user-agent") if request else None),
+        "lat": lat,
+        "lon": lon,
+        "score": score,
+        "element": element,
+        "details": details,
+        "payload": payload,
+    }
 
 
 app = FastAPI(
@@ -468,6 +506,7 @@ def fengshui_score(payload: EvaluateInput):
         raise HTTPException(status_code=422, detail=e.errors())
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 
