@@ -2,6 +2,9 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, ValidationError
 from typing import Literal, Dict
 from typing import List, Optional
+from supabase import create_client, Client
+import os
+
 
 
 app = FastAPI(
@@ -10,6 +13,11 @@ app = FastAPI(
     redoc_url="/redoc",
     openapi_url="/openapi.json",
 )
+# --- Supabase 연결 설정 ---
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
 
 # --------- Pydantic Schemas ---------
 class FeatureData(BaseModel):
@@ -143,6 +151,18 @@ def evaluate(payload: EvaluateInput):
 
         element = element_from_score(total)
         msg = message_from_inputs(total, f)
+            # --- 로그 저장 ---
+    try:
+        supabase.table("api_logs").insert({
+            "path": "/evaluate",
+            "ip": "127.0.0.1",
+            "element": element,
+            "score": score,
+            "payload": data
+        }).execute()
+    except Exception as e:
+        print("Supabase log error:", e)
+
 
         return EvaluateOutput(
             ok=True,
@@ -448,6 +468,7 @@ def fengshui_score(payload: EvaluateInput):
         raise HTTPException(status_code=422, detail=e.errors())
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 
