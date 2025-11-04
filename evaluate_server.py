@@ -176,7 +176,8 @@ def health():
     return {"ok": True}
 
 @app.post("/evaluate", response_model=EvaluateOutput)
-def evaluate(payload: EvaluateInput):
+async def evaluate(payload: EvaluateInput, request: Request, background_tasks: BackgroundTasks):
+
     try:
         f = payload.features
         s_dir = score_direction_south(f.direction_south)
@@ -201,6 +202,17 @@ def evaluate(payload: EvaluateInput):
     except Exception as e:
         print("Supabase log error:", e)
 
+rec = _build_log_record(
+    path="/evaluate",
+    request=request,
+    payload=payload.model_dump(),
+    lat=payload.lat,
+    lon=payload.lon,
+    score=total,
+    element=element,
+    details={"direction": s_dir, "river": s_riv, "road": s_road, "angle": s_ang},
+)
+background_tasks.add_task(_insert_log, rec)
 
         return EvaluateOutput(
             ok=True,
@@ -506,6 +518,7 @@ def fengshui_score(payload: EvaluateInput):
         raise HTTPException(status_code=422, detail=e.errors())
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 
