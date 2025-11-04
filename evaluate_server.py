@@ -191,16 +191,7 @@ async def evaluate(payload: EvaluateInput, request: Request, background_tasks: B
         element = element_from_score(total)
         msg = message_from_inputs(total, f)
             # --- 로그 저장 ---
-    try:
-        supabase.table("api_logs").insert({
-            "path": "/evaluate",
-            "ip": "127.0.0.1",
-            "element": element,
-            "score": score,
-            "payload": data
-        }).execute()
-    except Exception as e:
-        print("Supabase log error:", e)
+    
 
 rec = _build_log_record(
     path="/evaluate",
@@ -518,6 +509,7 @@ def fengshui_score(payload: EvaluateInput):
         raise HTTPException(status_code=422, detail=e.errors())
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 
