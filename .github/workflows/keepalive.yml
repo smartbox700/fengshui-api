@@ -1,31 +1,33 @@
-name: Keep Render Awake
+name: keepalive-fengshui-api
 
 on:
   schedule:
-    - cron: '*/12 * * * *'   # 12분마다 (UTC)
-  workflow_dispatch:
+    - cron: "*/10 * * * *"   # 10분마다 (UTC 기준)
+  workflow_dispatch: {}       # 수동 실행
+
+permissions:
+  contents: read
 
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 3
+    env:
+      HEALTH_URL: https://fengshui-api.onrender.com/health
     steps:
-      - name: Hit Render root (wake up)
+      - name: Curl /health (retry 3x)
         run: |
-          URL="https://fengshui-api.onrender.com/"
-          for i in {1..3}; do
-            CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL") || true
-            echo "Attempt $i => HTTP $CODE"
-            if [ "$CODE" = "200" ]; then exit 0; fi
-            sleep 10
+          set -euo pipefail
+          for i in 1 2 3; do
+            echo "[Attempt $i] $HEALTH_URL"
+            if curl -4 -fsS "$HEALTH_URL" \
+                 --max-time 20 --connect-timeout 5 \
+                 -H "User-Agent: keepalive-gha/1.0"; then
+              echo "OK"
+              exit 0
+            fi
+            echo "Retry in 20s..."
+            sleep 20
           done
+          echo "ERROR: health check failed after 3 attempts"
           exit 1
-
-      # 비차단 검사: 실패해도 워크플로우는 계속 통과
-      - name: Optional sanity POST to /evaluate (non-blocking)
-        if: always()
-        run: |
-          curl -s -X POST "https://fengshui-api.onrender.com/evaluate" \
-            -H "Content-Type: application/json" \
-            -d '{"lat":37.56,"lon":126.97,"features":{"aspect_deg":180,"road":{"distance_m":50,"angle_diff_to_aspect":10}}}' \
-            -o /dev/null -w "POST /evaluate => HTTP %{http_code}\n" || true
