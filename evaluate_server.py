@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, ValidationError
 from typing import Literal, Dict, List, Optional
 from supabase import create_client, Client
 import os
+
 app = FastAPI()
 # CORS 설정
 app.add_middleware(
@@ -13,9 +14,10 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "https://*.vercel.app",
-        "https://fengshui-api.onrender.com",
+        "https://fengshui-api.onrender.com",  # ← 오타 수정 (onrender)
     ],
+    # vercel 하위 도메인 전체 허용 (와일드카드는 regex로!)
+    allow_origin_regex=r"^https://.*\.vercel\.app$",
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -420,4 +422,5 @@ def fengshui_score(payload: EvaluateInput):
         raise HTTPException(status_code=422, detail=e.errors())
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
