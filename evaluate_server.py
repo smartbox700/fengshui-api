@@ -54,13 +54,16 @@ def make_features(lat: float, lng: float) -> dict:
         "flood_risk": round(flood_risk, 1),
     }
 
+from typing import Optional  # 위에 이미 있으면 이 줄은 빼도 돼
+
 class ReportRequest(BaseModel):
-    lat: float | None = None
-    lng: float | None = None
-    address: str | None = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    address: Optional[str] = None
 
 @app.post("/report")
 async def create_report(body: ReportRequest):
+    ...
     # 기본값: 서울 좌표
     lat = body.lat or 37.5665
     lng = body.lng or 126.9780
