@@ -6,6 +6,8 @@ from pydantic import BaseModel, Field, ValidationError
 from typing import Literal, Dict, List, Optional
 from supabase import create_client, Client
 import os
+import math
+
 
 app = FastAPI()
 # CORS 설정
@@ -22,6 +24,82 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# -------------------- report helpers --------------------
+def _frac(x: float) -> float:
+    return abs(x - math.floor(x))
+
+def make_features(lat: float, lng: float) -> dict:
+    delta_elevation = abs(_frac(lat) - _frac(lng)) * 100
+    river_distance  = (_frac(lat * lng) * 1500) + 50
+    road_direct     = 1.0 if (int(lat * 1000) % 7 == 0) else 0.0
+    road_curve      = _frac(lat + lng)
+    park_count      = int((_frac(lat * 37) + _frac(lng * 13)) * 4)
+    school_count    = int((_frac(lat * 11) + _frac(lng * 17)) * 3)
+    industry_distance = 300 + _frac(lat * lng * 3) * 3000
+    air_quality     = 20 + _frac(lat * 5 + lng * 3) * 60
+    noise_level     = 40 + (1 - road_curve) * 30 + road_direct * 10
+    flood_risk      = _frac(lat * 2 - lng * 2) * 100
+    return {
+        "delta_elevation": round(delta_elevation, 1),
+        "river_distance": round(river_distance, 1),
+        "road_direct": road_direct,
+        "road_curve": round(road_curve, 3),
+        "park_count": float(park_count),
+        "school_count": float(school_count),
+        "industry_distance": round(industry_distance, 1),
+        "air_quality": round(air_quality, 1),
+        "noise_level": round(noise_level, 1),
+        "flood_risk": round(flood_risk, 1),
+    }
+
+class ReportRequest(BaseModel):
+    lat: float | None = None
+    lng: float | None = None
+    address: str | None = None
+
+@app.post("/report")
+async def create_report(body: ReportRequest):
+    # 기본값: 서울 좌표
+    lat = body.lat or 37.5665
+    lng = body.lng or 126.9780
+
+    feats = make_features(lat, lng)
+
+    # 간단한 진단 메시지
+    recommendations: list[str] = []
+    if feats["noise_level"] > 60:
+        recommendations.append("소음 차단 보강을 권장합니다.")
+    if feats["flood_risk"] > 50:
+        recommendations.append("침수/배수 대비 점검이 필요합니다.")
+    if not recommendations:
+        recommendations.append("현재 특별한 리스크는 높지 않습니다.")
+
+    score_total = round(
+        85
+        - feats["noise_level"] * 0.12
+        - feats["flood_risk"] * 0.1
+        + feats["park_count"] * 0.8
+        + feats["school_count"] * 0.5,
+        1,
+    )
+
+    return {
+        "target": {
+            "address": body.address,
+            "lat": lat,
+            "lng": lng,
+        },
+        "features": feats,
+        "score": {
+            "total": score_total,
+            "noise": feats["noise_level"],
+            "flood": feats["flood_risk"],
+        },
+        "recommendations": recommendations,
+    }
+# -------------------- /report end --------------------
 
 
 # ---------------- Supabase Client ----------------
